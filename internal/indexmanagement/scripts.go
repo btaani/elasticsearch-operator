@@ -90,7 +90,7 @@ def catWriteAliases(policy):
     response_list = list(response.split("\n"))
     return " ".join(sorted(set(response_list)))
   except:
-    return ""
+    return "error"
 
 def docsCountInIndex(alias):
   try:
@@ -415,9 +415,11 @@ function getWriteAliases() {
   # "_cat/aliases/${policy}*-write?h=alias" | uniq
   aliasResponse="$(catWriteAliases "$policy")"
 
-  if [ -z "$aliasResponse" ]; then
+  if [ "$aliasResponse" = "error" ]; then
     echo "Received an empty response from elasticsearch -- server may not be ready"
     return 1
+  elif [ -z "$aliasResponse" ]; then
+    exit 0
   fi
 
   echo $aliasResponse
@@ -660,13 +662,15 @@ function updateWriteIndex() {
 `
 
 const rolloverScript = `
-set -euo pipefail
+set -eo pipefail
 source /tmp/scripts/indexManagement
 
 decoded=$(echo $PAYLOAD | base64 -d)
 
-# need to get a list of all mappings under ${POLICY_MAPPING}, drop suffix '-write' iterate over
-writeAliases="$(getWriteAliases "$POLICY_MAPPING")"
+if [ -v $writeAliases ]; then
+  echo "No indices to rollover"
+  exit 0
+fi
 
 for aliasBase in $writeAliases; do
   alias="$(echo $aliasBase | sed 's/-write$//g')"
@@ -683,6 +687,11 @@ source /tmp/scripts/indexManagement
 
 # need to get a list of all mappings under ${POLICY_MAPPING}, drop suffix '-write' iterate over
 writeAliases="$(getWriteAliases "$POLICY_MAPPING")"
+
+if [ -z "$writeAliases" ]; then
+  echo "No indices to delete"
+  exit 0
+fi
 
 for aliasBase in $writeAliases; do
 
